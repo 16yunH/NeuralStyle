@@ -318,10 +318,10 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 如有问题或建议，请通过以下方式联系：
 
 - 提交 [Issue](https://github.com/your-username/NeuralStyle/issues)
-- 发送邮件至：<your-email@example.com>
+- 发送邮件至：<hy20051123@gmail.com>
 
 ---
 
 🎨 让艺术与科技完美融合 🎨
 
-Made with ❤️ by [Your Name]
+Made with ❤️ by Yun Hong
