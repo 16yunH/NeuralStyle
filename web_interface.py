@@ -64,6 +64,50 @@ def display_image_with_aspect_ratio(image, caption, max_width=400):
     st.image(display_image, caption=caption)
     return display_image
 
+def validate_and_convert_image(image, image_type="图像"):
+    """
+    验证并转换图像格式，确保兼容性
+    
+    Args:
+        image: PIL Image对象
+        image_type: 图像类型描述（用于错误信息）
+    
+    Returns:
+        PIL Image对象 (RGB格式)
+    """
+    try:
+        # 检查图像模式
+        if image.mode not in ['RGB', 'RGBA', 'L', 'P']:
+            st.warning(f"⚠️ {image_type}格式可能不受支持，尝试转换为RGB格式")
+        
+        # 转换为RGB格式
+        if image.mode != 'RGB':
+            if image.mode == 'RGBA':
+                # 对于RGBA图像，需要处理透明度
+                # 创建白色背景
+                background = Image.new('RGB', image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1])  # 使用alpha通道作为mask
+                image = background
+                st.info(f"✅ 已将{image_type}的透明背景转换为白色背景")
+            else:
+                image = image.convert('RGB')
+                st.info(f"✅ 已将{image_type}转换为RGB格式")
+        
+        # 验证图像尺寸
+        w, h = image.size
+        if w < 32 or h < 32:
+            st.error(f"❌ {image_type}尺寸过小（{w}x{h}），建议至少32x32像素")
+            return None
+        
+        if w > 4096 or h > 4096:
+            st.warning(f"⚠️ {image_type}尺寸很大（{w}x{h}），可能需要较长处理时间")
+        
+        return image
+        
+    except Exception as e:
+        st.error(f"❌ 处理{image_type}时出错: {str(e)}")
+        return None
+
 # 标题
 st.title("🎨 神经风格迁移")
 st.markdown("---")
@@ -92,16 +136,28 @@ with col1:
     content_file = st.file_uploader("上传内容图像", type=['jpg', 'jpeg', 'png'], key="content")
     
     if content_file is not None:
-        content_image = Image.open(content_file)
-        display_image_with_aspect_ratio(content_image, "内容图像", 300)
+        try:
+            content_image = Image.open(content_file)
+            content_image = validate_and_convert_image(content_image, "内容图像")
+            if content_image is not None:
+                display_image_with_aspect_ratio(content_image, "内容图像", 300)
+        except Exception as e:
+            st.error(f"❌ 加载内容图像失败: {str(e)}")
+            content_image = None
 
 with col2:
     st.subheader("🎭 风格图像")
     style_file = st.file_uploader("上传风格图像", type=['jpg', 'jpeg', 'png'], key="style")
     
     if style_file is not None:
-        style_image = Image.open(style_file)
-        display_image_with_aspect_ratio(style_image, "风格图像", 300)
+        try:
+            style_image = Image.open(style_file)
+            style_image = validate_and_convert_image(style_image, "风格图像")
+            if style_image is not None:
+                display_image_with_aspect_ratio(style_image, "风格图像", 300)
+        except Exception as e:
+            st.error(f"❌ 加载风格图像失败: {str(e)}")
+            style_image = None
 
 with col3:
     st.subheader("🖼️ 结果图像")
@@ -119,14 +175,28 @@ col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
 
 with col_btn2:
     if st.button("🚀 开始风格迁移", type="primary", use_container_width=True):
-        if content_file is not None and style_file is not None:            # 创建进度条
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
+        # 检查图像是否已正确加载
+        if content_file is not None and style_file is not None:
+            # 重新验证图像（确保在按钮点击时图像仍然有效）
             try:
+                content_image = Image.open(content_file)
+                content_image = validate_and_convert_image(content_image, "内容图像")
+                
+                style_image = Image.open(style_file)
+                style_image = validate_and_convert_image(style_image, "风格图像")
+                
+                if content_image is None or style_image is None:
+                    st.error("❌ 图像验证失败，请重新上传有效的图像文件")
+                    st.stop()
+                
+                # 创建进度条
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
                 # 显示开始处理的提示
                 result_placeholder.info("🚀 正在初始化神经风格迁移...")
-                  # 保存临时文件
+                
+                # 保存临时文件
                 with tempfile.TemporaryDirectory() as temp_dir:
                     content_path = os.path.join(temp_dir, "content.jpg")
                     style_path = os.path.join(temp_dir, "style.jpg")
@@ -134,8 +204,9 @@ with col_btn2:
                     # 获取原始内容图像的尺寸
                     original_content_size = content_image.size  # (width, height)
                     
-                    content_image.save(content_path)
-                    style_image.save(style_path)
+                    # 图像已经在validate_and_convert_image函数中转换为RGB格式
+                    content_image.save(content_path, 'JPEG')
+                    style_image.save(style_path, 'JPEG')
                     
                     # 创建配置
                     config = Config()
@@ -241,13 +312,25 @@ with col_btn2:
                         data=img_buffer.getvalue(),
                         file_name="neural_style_result.jpg",
                         mime="image/jpeg"
-                    )
-                    
+                    )                    
             except Exception as e:
-                st.error(f"错误: {e}")
+                st.error(f"❌ 处理过程中发生错误: {str(e)}")
+                st.error("💡 建议检查:")
+                st.error("• 图像格式是否正确（支持JPG, JPEG, PNG）")
+                st.error("• 图像文件是否完整（未损坏）")
+                st.error("• 图像尺寸是否合理（不要过小或过大）")
+                st.error("• 确保有足够的系统内存")
+                
+                # 重置进度条和状态
+                if 'progress_bar' in locals():
+                    progress_bar.progress(0.0)
+                if 'status_text' in locals():
+                    status_text.text("❌ 处理失败")
+                
+                result_placeholder.error("❌ 风格迁移失败，请尝试重新上传图像或调整参数")
                 
         else:
-            st.warning("请先上传内容图像和风格图像！")
+            st.warning("⚠️ 请先上传内容图像和风格图像！")
 
 # 示例图像
 st.markdown("---")
